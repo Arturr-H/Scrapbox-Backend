@@ -4,9 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-
 ## Main backend handler
-websocket = "0.26.5"
+tungstenite = "0.17.3"
 
 ## Transfering structs and other data types via websocket
 serde_derive = "1.0.147"

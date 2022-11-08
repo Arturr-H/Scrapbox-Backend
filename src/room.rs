@@ -2,9 +2,6 @@
 use crate::player::Player;
 use uuid::Uuid;
 
-/*- Constants -*/
-
-
 /*- Structs, enums & unions -*/
 struct Room<'lf, RSize: Into<u8>> {
     // Room-id for sending room specific websocket data
