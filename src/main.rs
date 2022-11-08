@@ -1,7 +1,9 @@
 /*- Global allowings -*/
 #![allow(
     dead_code,
-    unused_variables
+    unused_variables,
+	unused_mut,
+	unused_imports
 )]
 
 /*- Imports & Modules -*/
@@ -10,20 +12,38 @@ mod room;
 // ---
 use tungstenite;
 use player::Player;
+use lazy_static::lazy_static;
+use redis::{ self, Commands, Connection };
+use dotenv::dotenv;
 use std::{
+	env,
 	thread,
 	net::TcpListener
 };
 
 /*- Constants -*/
-const PROTOCOL:&str = "rust-websocket";
-const ADDRESS :&str = "127.0.0.1";
-const PORT 	  :u16 			= 8080;
+const WSS_ADDRESS :&str = "127.0.0.1";
+const WSS_PORT    :u16  = 8080;
+const R_ENV_KEY_HOSTNAME: &'static str = "REDIS_HOSTNAME";
+const R_ENV_KEY_PASSWORD: &'static str = "REDIS_PASSWORD";
+
+/*- Lazy statics -*/
+lazy_static! {
+	static ref REDIS_HOSTNAME: String = env::var(R_ENV_KEY_HOSTNAME).unwrap();
+	static ref REDIS_PASSWORD: String = env::var(R_ENV_KEY_PASSWORD).unwrap();
+}
 
 /*- Initialize -*/
 fn main() {
-    /*- Start websocket server listener -*/
-	let server = TcpListener::bind(format!("{}:{}", ADDRESS, PORT)).unwrap();
+	/*- Initialize .env k&v:s -*/
+	dotenv().unwrap();
+	
+	/*- Start websocket server listener -*/
+	let server = TcpListener::bind(format!("{}:{}", WSS_ADDRESS, WSS_PORT)).unwrap();
+
+	/*- Pre-warn about missing ENV variables, bevcause lazy static won't initialize them until read -*/
+	env::var(R_ENV_KEY_HOSTNAME).unwrap();
+	env::var(R_ENV_KEY_PASSWORD).unwrap();
 
 	/*- Print the launch -*/
 	println!("\x1b[93mLaunch successful!\x1b[0m");
@@ -35,7 +55,7 @@ fn main() {
 			Err(_) => continue,
 		};
 		
-        /*- Spawn a new thread for each connection -*/
+		/*- Spawn a new thread for each connection -*/
 		thread::spawn(move || {
 
 			/*- Try accept websocket tunnel connection -*/
@@ -43,6 +63,14 @@ fn main() {
 				Ok(msg) => msg,
 				Err(_) => return
 			};
+
+			/*- Connect non-asynchronously (won't be needed, we use threads instead) -*/
+			let mut connection:Connection = redis::Client::open(format!("redis://:{}@{}", *REDIS_PASSWORD, *REDIS_HOSTNAME))
+				.unwrap()
+				.get_connection()
+				.unwrap();
+
+				// let _:() = connection.set("key", 1).unwrap();
 
 			/*- Client tunnel handled here -*/
 			loop {
