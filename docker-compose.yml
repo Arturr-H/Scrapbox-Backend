@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  redis:
+    image: redis:7.0.5
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis-data:/data
+    command: redis-server --appendonly yes
+
+  rust:
+    image: rust:1.65.0
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/usr/src/myapp
+    working_dir: /usr/src/myapp
+    command: cargo run
