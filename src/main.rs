@@ -1,7 +1,7 @@
 /*- Global allowings -*/
 #![allow(
-    dead_code,
-    unused_variables,
+	dead_code,
+	unused_variables,
 	unused_mut,
 	unused_imports
 )]
@@ -12,6 +12,7 @@ mod room;
 // ---
 use tungstenite;
 use player::Player;
+use room::Room;
 use lazy_static::lazy_static;
 use redis::{ self, Commands, Connection };
 use dotenv::dotenv;
@@ -48,6 +49,27 @@ fn main() {
 	/*- Print the launch -*/
 	println!("\x1b[93mLaunch successful!\x1b[0m");
 
+	/*- Connect non-asynchronously (won't be needed, we use threads instead) -*/
+	let mut connection:Connection = redis::Client::open(format!("redis://:{}@{}", *REDIS_PASSWORD, *REDIS_HOSTNAME))
+		.unwrap()
+		.get_connection()
+		.unwrap();
+
+	let mut room:Room<u8> = Room {
+		id: "awhduoip".into(),
+		players: vec![
+			Player::new().suid("lsuid").displayname("Di Name").username("arre21"),
+			Player::new().suid("lsu12erid").displayname("Di Name 21").username("arre")
+		],
+		max_players: 5,
+		leader: Player::new().suid("lsuid").displayname("Di Name").username("arre"),
+		started: false,
+		private: true,
+		..Room::default()
+	};
+
+	let _:() = connection.hset_multiple("room", &room.to_redis_hash().unwrap()).unwrap();
+
     /*- Get every request isn't Err(_) -*/
 	for request in server.incoming() {
 		let request = match request {
@@ -70,7 +92,7 @@ fn main() {
 				.get_connection()
 				.unwrap();
 
-				// let _:() = connection.set("key", 1).unwrap();
+			let _:() = connection.mset_nx(&[("a", 1)]).unwrap();
 
 			/*- Client tunnel handled here -*/
 			loop {

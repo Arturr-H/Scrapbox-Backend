@@ -1,29 +1,34 @@
 /*- Imports -*/
 use crate::player::Player;
 use uuid::Uuid;
+use redis::{ self, Commands, Connection, ToRedisArgs };
+use std::default::Default;
 
 /*- Structs, enums & unions -*/
-struct Room<'lf, RSize: Into<u8>> {
+pub struct Room<'lf, RSize: Into<u8>> {
     // Room-id for sending room specific websocket data
-    id          : String,
+    pub id          : String,
 
     // All players in the room, including the leader
-    players     : Vec<Player<'lf>>,
+    pub players         : Vec<Player<'lf>>,
+
+    // Player bytes
+    pub _players        : Vec<u8>,
 
     // Should be changeable by leader. 
-    max_players : RSize,
+    pub max_players : RSize,
 
     // The creator of the room usually gets this role,
     // however they might leave which will pass this role
     // onto the next player who joined.
-    leader      : Player<'lf>,
+    pub leader      : Player<'lf>,
 
     // Wether the room has started yet or not
-    started     : bool,
+    pub started     : bool,
 
     // Controls wether the room should be visible
     // in the browse rooms section or not.
-    private     : bool,
+    pub private     : bool,
 }
 
 // Numbers of max players in room
@@ -49,13 +54,14 @@ enum RoomSize {
 impl<'a, T: Into<u8> + Copy> Room<'a, T> {
 
     /*- Create a room with leader as input -*/
-    fn from_leader(leader:Player<'a>, max_players:T) -> Self {
+    pub fn from_leader(leader:Player<'a>, max_players:T) -> Self {
         let id:String = Uuid::new_v4().as_hyphenated().to_string();
 
         /*- Return -*/
         Self {
             id,
             players: vec![leader],
+            _players: Vec::new(),
             max_players,
             leader,
             started: false,
@@ -64,7 +70,7 @@ impl<'a, T: Into<u8> + Copy> Room<'a, T> {
     }
 
     /*- Remove player from room -*/
-    fn remove_player(&mut self, player:Player<'a>) -> Result<(), ()> {
+    pub fn remove_player(&mut self, player:Player<'a>) -> Result<(), ()> {
         /*- First check if player is leader -*/
         if player.suid == self.leader.suid {
             self.players.remove(0);
@@ -90,7 +96,7 @@ impl<'a, T: Into<u8> + Copy> Room<'a, T> {
     }
 
     /*- Add player to room -*/
-    fn add_player(&mut self, player:Player<'a>) -> Result<(), ()> {
+    pub fn add_player(&mut self, player:Player<'a>) -> Result<(), ()> {
         /*- If room still fits another player -*/
         if self.players.len() < <T as Into<u8>>::into(self.max_players) as usize {
             self.players.push(player);
@@ -101,7 +107,7 @@ impl<'a, T: Into<u8> + Copy> Room<'a, T> {
     }
 
     /*- Change room size -*/
-    fn change_max_players(&mut self, max_players:T) -> Result<(), ()> {
+    pub fn change_max_players(&mut self, max_players:T) -> Result<(), ()> {
         /*- If the change of max players won't fit the current amount of players in the room -*/
         if self.players.len() > max_players.into().into() {
             Err(())
@@ -112,13 +118,50 @@ impl<'a, T: Into<u8> + Copy> Room<'a, T> {
     }
 
     /*- Change room visibility -*/
-    fn change_room_visibility(&mut self, private:bool) -> () {
+    pub fn change_room_visibility(&mut self, private:bool) -> () {
         self.private = private;
     }
 
+    /*- To redis Hash -*/
+    pub fn arg<F: ToRedisArgs>(f:F) -> Vec<Vec<u8>> { f.to_redis_args() }
+    pub fn to_redis_hash(&mut self) -> Result<[(impl ToRedisArgs, impl ToRedisArgs); 6], ()> {
+        self.serialize_players_unchecked();
+
+        Ok([
+            ("id",         Self::arg(self.id.as_str())),
+            ("leader",     Self::arg(self.leader.to_bytes_unchecked())),
+            ("players",    Self::arg(&self._players)),
+            ("max-players",Self::arg(self.max_players.into())),
+            ("started",    Self::arg(self.started)),
+            ("private",    Self::arg(self.private)),
+        ])
+    }
+
+    /*- Serialize players -*/
+    pub fn serialize_players_unchecked(&mut self) -> () {
+        /*- Serialize & if fail Err(_) -*/
+        self._players = match bincode::serialize(&self.players) {
+            Ok(e) => e,
+            Err(_) => Vec::new()
+        };
+    }
+
     /*- Disbandon room -*/
-    fn disbandon(&mut self) -> () {
+    pub fn disbandon(&mut self) -> () {
         todo!()
+    }
+}
+impl<'lf> Default for Room<'lf, u8> {
+    fn default() -> Self {
+        Self { 
+            id: "".into(), 
+            players: Vec::new(), 
+            _players: Vec::new(), 
+            max_players: 5, 
+            leader: Player::default(), 
+            started: false, 
+            private: false
+        }
     }
 }
 

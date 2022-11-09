@@ -27,9 +27,9 @@ impl<'lf> Player<'lf> {
     }
 
     /*- Builder pattern -*/
-    pub fn username(&mut self, username:&'lf str) ->       &mut Self { self.username = Some(username); self }
-    pub fn displayname(&mut self, displayname:&'lf str) -> &mut Self { self.displayname = Some(displayname); self }
-    pub fn suid(&mut self, suid:&'lf str) ->               &mut Self { self.suid = Some(suid); self }
+    pub fn username(mut self, username:&'lf str) ->       Self { self.username = Some(username); self }
+    pub fn displayname(mut self, displayname:&'lf str) -> Self { self.displayname = Some(displayname); self }
+    pub fn suid(mut self, suid:&'lf str) ->               Self { self.suid = Some(suid); self }
 
     /*- Bincode deserialization for transport in websocket tunnels -*/
     pub fn from_bytes(input: &'lf [u8]) -> Result<Self, Box<bincode::ErrorKind>> {
@@ -41,12 +41,16 @@ impl<'lf> Player<'lf> {
     }
 
     /*- Bincode serialization for transport -*/
-    pub fn to_bytes(input: Player) -> Result<Vec<u8>, Box<bincode::ErrorKind>> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Box<bincode::ErrorKind>> {
         /*- Serialize & if fail Err(_) -*/
-        let bytes:Vec<u8> = bincode::serialize(&input)?;
+        let bytes:Vec<u8> = bincode::serialize(&self)?;
 
         /*- Return -*/
         Ok(bytes)
+    }
+    pub fn to_bytes_unchecked(&self) -> Vec<u8> {
+        /*- Serialize & if fail Err(_) -*/
+        bincode::serialize(&self).unwrap_or(Vec::new())
     }
 }
 
