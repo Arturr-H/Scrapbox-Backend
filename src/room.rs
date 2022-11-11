@@ -5,7 +5,7 @@ use redis::{ self, Commands, Connection, ToRedisArgs };
 use std::default::Default;
 
 /*- Structs, enums & unions -*/
-pub struct Room<'lf, RSize: Into<u8>> {
+pub struct Room<'lf> {
     // Room-id for sending room specific websocket data
     pub id          : String,
 
@@ -16,7 +16,7 @@ pub struct Room<'lf, RSize: Into<u8>> {
     pub _players        : Vec<u8>,
 
     // Should be changeable by leader. 
-    pub max_players : RSize,
+    pub max_players : u8,
 
     // The creator of the room usually gets this role,
     // however they might leave which will pass this role
@@ -31,38 +31,17 @@ pub struct Room<'lf, RSize: Into<u8>> {
     pub private     : bool,
 }
 
-// Numbers of max players in room
-#[derive(Clone, Copy)]
-enum RoomSize {
-    /// 2
-    Duo,
-    
-    /// 4
-    Small,
-    
-    /// 5
-    Medium,
-    
-    /// 6
-    Big,
-    
-    /// 10
-    Grande
-}
-
 /*- Method implementations -*/
-impl<'a, T: Into<u8> + Copy> Room<'a, T> {
+impl<'a> Room<'a> {
 
     /*- Create a room with leader as input -*/
-    pub fn from_leader(leader:Player<'a>, max_players:T) -> Self {
-        let id:String = Uuid::new_v4().as_hyphenated().to_string();
-
+    pub fn from_leader(leader:Player<'a>, id:String) -> Self {
         /*- Return -*/
         Self {
             id,
             players: vec![leader],
             _players: Vec::new(),
-            max_players,
+            max_players: 5,
             leader,
             started: false,
             private: false
@@ -98,7 +77,7 @@ impl<'a, T: Into<u8> + Copy> Room<'a, T> {
     /*- Add player to room -*/
     pub fn add_player(&mut self, player:Player<'a>) -> Result<(), ()> {
         /*- If room still fits another player -*/
-        if self.players.len() < <T as Into<u8>>::into(self.max_players) as usize {
+        if self.players.len() < self.max_players as usize {
             self.players.push(player);
             return Ok(())
         };
@@ -107,9 +86,9 @@ impl<'a, T: Into<u8> + Copy> Room<'a, T> {
     }
 
     /*- Change room size -*/
-    pub fn change_max_players(&mut self, max_players:T) -> Result<(), ()> {
+    pub fn change_max_players(&mut self, max_players:u8) -> Result<(), ()> {
         /*- If the change of max players won't fit the current amount of players in the room -*/
-        if self.players.len() > max_players.into().into() {
+        if self.players.len() > max_players as usize {
             Err(())
         }else {
             self.max_players = max_players;
@@ -131,7 +110,7 @@ impl<'a, T: Into<u8> + Copy> Room<'a, T> {
             ("id",         Self::arg(self.id.as_str())),
             ("leader",     Self::arg(self.leader.to_bytes_unchecked())),
             ("players",    Self::arg(&self._players)),
-            ("max-players",Self::arg(self.max_players.into())),
+            ("max-players",Self::arg(self.max_players)),
             ("started",    Self::arg(self.started)),
             ("private",    Self::arg(self.private)),
         ])
@@ -146,34 +125,26 @@ impl<'a, T: Into<u8> + Copy> Room<'a, T> {
         };
     }
 
+    /*- Create ID for room -*/
+    pub fn gen_id() -> String {
+        Uuid::new_v4().as_hyphenated().to_string()
+    }
+
     /*- Disbandon room -*/
     pub fn disbandon(&mut self) -> () {
         todo!()
     }
 }
-impl<'lf> Default for Room<'lf, u8> {
+impl<'lf> Default for Room<'lf> {
     fn default() -> Self {
         Self { 
-            id: "".into(), 
+            id: String::new(), 
             players: Vec::new(), 
             _players: Vec::new(), 
             max_players: 5, 
             leader: Player::default(), 
             started: false, 
             private: false
-        }
-    }
-}
-
-/*- Methods for enum RoomSize -*/
-impl Into<u8> for RoomSize {
-    fn into(self) -> u8 {
-        match self {
-            Self::Duo => 2,
-            Self::Small => 4,
-            Self::Medium => 6,
-            Self::Big => 8,
-            Self::Grande => 12
         }
     }
 }

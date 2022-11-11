@@ -9,6 +9,7 @@
 /*- Imports & Modules -*/
 mod player;
 mod room;
+mod handle_req;
 // ---
 use tungstenite;
 use player::Player;
@@ -16,6 +17,7 @@ use room::Room;
 use lazy_static::lazy_static;
 use redis::{ self, Commands, Connection };
 use dotenv::dotenv;
+use handle_req::handle_req;
 use std::{
 	env,
 	thread,
@@ -32,6 +34,9 @@ const R_ENV_KEY_PASSWORD: &'static str = "REDIS_PASSWORD";
 lazy_static! {
 	static ref REDIS_HOSTNAME: String = env::var(R_ENV_KEY_HOSTNAME).unwrap();
 	static ref REDIS_PASSWORD: String = env::var(R_ENV_KEY_PASSWORD).unwrap();
+
+	/*- Account manager -*/
+	static ref ACCOUNT_MANAGER_URL: String = env::var("ACCOUNT_MANAGER_URL").unwrap();
 }
 
 /*- Initialize -*/
@@ -48,27 +53,6 @@ fn main() {
 
 	/*- Print the launch -*/
 	println!("\x1b[93mLaunch successful!\x1b[0m");
-
-	/*- Connect non-asynchronously (won't be needed, we use threads instead) -*/
-	let mut connection:Connection = redis::Client::open(format!("redis://:{}@{}", *REDIS_PASSWORD, *REDIS_HOSTNAME))
-		.unwrap()
-		.get_connection()
-		.unwrap();
-
-	let mut room:Room<u8> = Room {
-		id: "awhduoip".into(),
-		players: vec![
-			Player::new().suid("lsuid").displayname("Di Name").username("arre21"),
-			Player::new().suid("lsu12erid").displayname("Di Name 21").username("arre")
-		],
-		max_players: 5,
-		leader: Player::new().suid("lsuid").displayname("Di Name").username("arre"),
-		started: false,
-		private: true,
-		..Room::default()
-	};
-
-	let _:() = connection.hset_multiple("room", &room.to_redis_hash().unwrap()).unwrap();
 
     /*- Get every request isn't Err(_) -*/
 	for request in server.incoming() {
@@ -92,23 +76,20 @@ fn main() {
 				.get_connection()
 				.unwrap();
 
-			let _:() = connection.mset_nx(&[("a", 1)]).unwrap();
-
 			/*- Client tunnel handled here -*/
 			loop {
 				/*- Get client message -*/
-				let message = match websocket.read_message() {
-					Ok(msg) => msg,
+				let mut message:tungstenite::Message;
+				match websocket.read_message() {
+					Ok(msg) => {
+						message = msg;
+					},
 					Err(_) => continue
 				};
-				
+
 				/*- Match message type (we only accept binary) -*/
 				match message {
-					tungstenite::Message::Binary(bytes) => {
-						let player:Player = Player::from_bytes(&bytes).unwrap();
-
-						println!("Client {player:?} connected");
-					},
+					tungstenite::Message::Text(text) => handle_req(&text, &mut websocket, &mut connection),
 					_ => ()
 				};
 			};

@@ -6,6 +6,7 @@
 /*- Imports -*/
 use serde_derive::{ Serialize, Deserialize };
 use std::default::Default;
+use crate::ACCOUNT_MANAGER_URL;
 
 /*- Structs, enums & unions -*/
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -51,6 +52,19 @@ impl<'lf> Player<'lf> {
     pub fn to_bytes_unchecked(&self) -> Vec<u8> {
         /*- Serialize & if fail Err(_) -*/
         bincode::serialize(&self).unwrap_or(Vec::new())
+    }
+
+    /*- Check user auth status -*/
+    pub fn check_auth(jwt:&str) -> u16 {
+            /*- GET JWS auth status -*/
+        let url = format!("{}{}", &**ACCOUNT_MANAGER_URL, "profile/verify-token");
+        match reqwest::blocking::Client::new()
+            .get(&url)
+            .header("token", jwt)
+            .send()
+            { Ok(e) => e, Err(_) => return 402u16 }
+            .status()
+            .as_u16()
     }
 }
 
