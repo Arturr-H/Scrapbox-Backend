@@ -25,6 +25,9 @@ reqwest = { version = "0.11.0", features = ["blocking"] }
 ## For initializing .env k&v:s in main -> can be used in std::env later
 dotenv = "0.15.0"
 
+## For redirecting and creating rooms
+responder = "0.1.84"
+
 # UUID-generator
 [dependencies.uuid]
 version = "1.1.2"

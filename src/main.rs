@@ -10,6 +10,7 @@
 mod player;
 mod room;
 mod handle_req;
+mod endpoints;
 // ---
 use tungstenite;
 use player::Player;
@@ -18,6 +19,7 @@ use lazy_static::lazy_static;
 use redis::{ self, Commands, Connection };
 use dotenv::dotenv;
 use handle_req::handle_req;
+use responder::prelude::*;
 use std::{
 	env,
 	thread,
@@ -51,8 +53,13 @@ fn main() {
 	env::var(R_ENV_KEY_HOSTNAME).unwrap();
 	env::var(R_ENV_KEY_PASSWORD).unwrap();
 
+	/*- Launch responder api routes -*/
+	// thread::spawn(move || {
+		// launch_api_routes();
+	// });
+
 	/*- Print the launch -*/
-	println!("\x1b[93mLaunch successful!\x1b[0m");
+	println!("Launch successful on {}:{}!", WSS_ADDRESS, WSS_PORT);
 
     /*- Get every request isn't Err(_) -*/
 	for request in server.incoming() {
@@ -96,3 +103,16 @@ fn main() {
 		});
 	}
 }
+
+// fn launch_api_routes() -> () {
+// 	let routes = &[
+// 		Route::Get("create_room", endpoints::create_room)
+// 	];
+
+// 	Server::new()
+// 		.port(8082)
+// 		.address("127.0.0.1")
+// 		.routes(routes)
+// 		.start()
+// 		.unwrap()
+// }

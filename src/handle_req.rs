@@ -1,6 +1,6 @@
 
 /*- Imports -*/
-use std::net::TcpStream;
+use std::{net::TcpStream, collections::BTreeMap};
 use redis::{ Connection, Commands };
 use serde::{ Deserialize, Serialize };
 use serde_json::{json, Value};
@@ -41,7 +41,7 @@ pub fn handle_req<'a>(
     /*- Get what type of JSON struct to use -*/
     let mut request:RequestJsonType = match serde_json::from_str::<GeneralRequest>(text) {
         Ok(GeneralRequest { destination, data }) => {
-
+            println!("{destination}");
             /*- Get what type of json data is to be serialized -*/
             match destination {
                 "create-room"   => RequestJsonType::CreateRoom(
@@ -78,7 +78,7 @@ fn create_room(
     websocket:&mut WebSocket<TcpStream>,
     redis_connection: &mut Connection
 ) -> Result<Value, u16> {
-    /*- GET JWS auth status -*/
+    /*- GET JWT auth status -*/
     let status:u16 = Player::check_auth(&request.jwt);
 
     /*- Check status -*/
@@ -90,23 +90,24 @@ fn create_room(
         200 => {
             /*- Get room details -*/
             let id:String = Room::gen_id();
-            let room = match Room::from_leader(Player::default(), id.clone()).to_redis_hash() {
+            let mut room = Room::from_leader(Player::default(), id.clone());
+            
+
+            let redis_room = match room.to_redis_hash() {
                 Ok(e) => e,
                 Err(_) => return Err(404)
             };
 
             /*- Create room -*/
-            let _:() = match redis_connection.hset_multiple(id.clone(), &room) {
+            let _:() = match redis_connection.hset_multiple(id.clone(), &redis_room) {
                 Ok(e) => e,
                 Err(_) => return Err(404)
             };
 
-            println!("{id}");
-
             /*- Return -*/
             Ok(json!({
                 "status": 200,
-                "id": &id
+                "room": room.to_string()
             }))
         },
         _ => Err(401)
@@ -118,7 +119,7 @@ fn join_room(
     websocket:&mut WebSocket<TcpStream>,
     redis_connection: &mut Connection
 ) -> Result<Value, u16> {
-    /*- GET JWS auth status -*/
+    /*- GET JWT auth status -*/
     let status:u16 = Player::check_auth(&request.jwt);
 
     /*- Check status -*/
@@ -128,6 +129,15 @@ fn join_room(
 
         // Ok
         200 => {
+            /*- Get room -*/
+            println!("{}", request.room_id);
+            let room_data:BTreeMap<String, String> = match redis_connection.hgetall(&request.room_id) {
+                Ok(e) => e,
+                Err(_) => return Err(404)
+            };
+
+            println!("AOMOA:::::::::: {:?}", Room::from_redis_hash(&room_data));
+
             /*- Get room details -*/
             let id:String = Room::gen_id();
             let room = match Room::from_leader(Player::default(), id.clone()).to_redis_hash() {
@@ -135,16 +145,10 @@ fn join_room(
                 Err(_) => return Err(404)
             };
 
-            /*- Create room -*/
-            let _:() = match redis_connection.hset_multiple(id.clone(), &room) {
-                Ok(e) => e,
-                Err(_) => return Err(404)
-            };
-
             /*- Return -*/
             Ok(json!({
                 "status": 200,
-                "id": &id
+                // "room": room.to_string()
             }))
         },
         _ => Err(401)

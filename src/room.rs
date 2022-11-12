@@ -1,10 +1,12 @@
 /*- Imports -*/
 use crate::player::Player;
+use serde_derive::{Serialize, Deserialize};
 use uuid::Uuid;
 use redis::{ self, Commands, Connection, ToRedisArgs };
-use std::default::Default;
+use std::{default::Default, collections::BTreeMap};
 
 /*- Structs, enums & unions -*/
+#[derive(Serialize, Debug)]
 pub struct Room<'lf> {
     // Room-id for sending room specific websocket data
     pub id          : String,
@@ -116,6 +118,44 @@ impl<'a> Room<'a> {
         ])
     }
 
+    /*- From redis hash -*/
+    pub fn make_bool(inner:Option<&String>) -> Option<bool> {
+        match inner {
+            Some(e) => {
+                match e.parse::<u8>() {
+                    Ok(e) => {
+                        if e == 0 { Some(false) }
+                        else { Some(true) }
+                    },
+                    Err(_) => return None
+                }
+            },
+            None => return None
+        }
+    }
+    pub fn from_redis_hash<'w: 'a>(hash:&'w BTreeMap<String, String>) -> Option<Self> {
+        let players = match bincode::deserialize::<Vec<Player>>(
+            match &hash.get("players") {
+                Some(e) => e,
+                None => return None
+            }.as_bytes()
+        ) {
+            Ok(e) => e,
+            Err(_) => return None
+        };
+
+        /*- Return -*/
+        Some(Self {
+            id: hash.get("id").unwrap().to_string(),
+            players,
+            _players: Vec::new(),
+            max_players: hash.get("max-players").unwrap().to_string().parse::<u8>().ok().unwrap(),
+            leader: Player::from_bytes(&hash.get("leader").unwrap().as_bytes()).ok().unwrap(),
+            started: Self::make_bool(hash.get("started"))?,
+            private: Self::make_bool(hash.get("private"))?
+        })
+    }
+
     /*- Serialize players -*/
     pub fn serialize_players_unchecked(&mut self) -> () {
         /*- Serialize & if fail Err(_) -*/
@@ -146,5 +186,10 @@ impl<'lf> Default for Room<'lf> {
             started: false, 
             private: false
         }
+    }
+}
+impl ToString for Room<'_> {
+    fn to_string(&self) -> String {
+        serde_json::to_string(self).unwrap_or(String::new())
     }
 }
