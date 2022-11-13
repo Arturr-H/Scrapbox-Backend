@@ -714,6 +714,7 @@ dependencies = [
  "bincode",
  "dotenv",
  "lazy_static",
+ "rand",
  "redis",
  "reqwest",
  "responder",

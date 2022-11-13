@@ -28,6 +28,9 @@ dotenv = "0.15.0"
 ## For redirecting and creating rooms
 responder = "0.1.84"
 
+## For generating public room-id:s
+rand = "0.8.5"
+
 # UUID-generator
 [dependencies.uuid]
 version = "1.1.2"

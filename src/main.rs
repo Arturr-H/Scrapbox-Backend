@@ -10,7 +10,7 @@
 mod player;
 mod room;
 mod handle_req;
-mod endpoints;
+mod ws_status;
 // ---
 use tungstenite;
 use player::Player;
@@ -53,10 +53,13 @@ fn main() {
 	env::var(R_ENV_KEY_HOSTNAME).unwrap();
 	env::var(R_ENV_KEY_PASSWORD).unwrap();
 
-	/*- Launch responder api routes -*/
-	// thread::spawn(move || {
-		// launch_api_routes();
-	// });
+	/*- Pre-warn about redis connection -*/
+	redis::Client::open(format!("redis://:{}@{}", *REDIS_PASSWORD, *REDIS_HOSTNAME)).unwrap()
+		.get_connection()
+		.expect("REDIS AUTH might have failed. Do CONFIG SET requirepass <pass>");
+
+	/*- Pre-warn about scrapbox-account-manager connection -*/
+	reqwest::blocking::get(&**ACCOUNT_MANAGER_URL).unwrap();
 
 	/*- Print the launch -*/
 	println!("Launch successful on {}:{}!", WSS_ADDRESS, WSS_PORT);
@@ -103,16 +106,3 @@ fn main() {
 		});
 	}
 }
-
-// fn launch_api_routes() -> () {
-// 	let routes = &[
-// 		Route::Get("create_room", endpoints::create_room)
-// 	];
-
-// 	Server::new()
-// 		.port(8082)
-// 		.address("127.0.0.1")
-// 		.routes(routes)
-// 		.start()
-// 		.unwrap()
-// }

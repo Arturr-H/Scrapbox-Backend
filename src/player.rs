@@ -77,6 +77,26 @@ impl<'lf> Player<'lf> {
             .status()
             .as_u16()
     }
+
+    /*- Fetch player data by SUID -*/
+    pub fn fetch_player(suid:&str) -> Option<String> {
+        println!("{}",             format!(
+            "{}profile/data/by_suid/{}",
+            *ACCOUNT_MANAGER_URL,
+            suid
+        ));
+        /*- Get JSON data -*/
+        let json_fetch:String = reqwest::blocking::get(
+            format!(
+                "{}profile/data/by_suid/{}",
+                *ACCOUNT_MANAGER_URL,
+                suid
+            )
+        ).ok()?.text().ok()?;
+
+        /*- Return -*/
+        Some(json_fetch)
+    }
 }
 
 /*- Default settings -*/
@@ -90,3 +110,15 @@ impl Default for GameStatistics {
         GameStatistics { games_won: 0, games_played: 0, words_written: 0 }
     }
 }
+
+/*- PartialEq for checking if player is in room or not -*/
+impl<'a> PartialEq for Player<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.suid == other.suid
+    }
+    fn ne(&self, other: &Self) -> bool {
+        self.suid != other.suid
+    }
+}
+
+
