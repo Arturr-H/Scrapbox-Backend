@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use serde_derive::{ Serialize, Deserialize };
 use reqwest;
 use tungstenite::{ WebSocket, Message };
-use crate::{ ACCOUNT_MANAGER_URL, room::Room, player::Player, ws_status };
+use crate::{ ACCOUNT_MANAGER_URL, room::Room, player::Player, ws_status, req_utils };
 
 /*- Structs & enums -*/
 #[derive(Serialize, Deserialize, Debug)]
@@ -29,12 +29,6 @@ struct CreateRoomRequestData {
 struct JoinRoomRequestData {
     jwt: String,
     room_id: String
-}
-
-/*- Struct for retrieving suid data from token auth response -*/
-#[derive(Serialize, Deserialize, Debug)]
-struct SuidResponse {
-    suid:String
 }
 
 /*- Main -*/
@@ -86,8 +80,6 @@ fn create_room(
     /*- GET JWT auth status -*/
     let status:u16 = Player::check_auth(&request.jwt);
 
-    println!("{status:?}");
-
     /*- Check status -*/
     match status {
         // Unauthorized
@@ -100,7 +92,6 @@ fn create_room(
             let public_id:u32     = Room::gen_public_id();
             let room_name:String  = format!("room:{}", public_id);
             let mut room          = Room::from_leader(Player::default(), private_id.clone(), public_id);
-            println!("{room:#?}");
 
             /*- Convert to redis hash -*/
             let redis_room = match room.to_redis_hash() {
@@ -115,6 +106,7 @@ fn create_room(
             };
 
             /*- Return -*/
+            println!("CREATE: {room:?}");
             Ok(json!({
                 "status": 200,
                 "room": room.to_string()
@@ -139,38 +131,10 @@ fn join_room(
 
         // Ok
         200 => {
-            let token_check_url = format!("{}profile/verify-token", &*ACCOUNT_MANAGER_URL);
-            println!("{token_check_url}");
-            /*- Check player auth -*/
-            let suid:String = match reqwest::blocking::Client::new()
-                .get(token_check_url)
-                .header("token", &request.jwt).send() {
-
-                /*- If request succeeded -*/
-                Ok(response) => {
-                    match response.text() {
-                        Ok(text) => {
-                            println!("{text}");
-                            /*- Parse response to SUID value -*/
-                            match serde_json::from_str::<SuidResponse>(&text) {
-                                Ok(suid_response) => suid_response.suid,
-                                Err(_) => return Err(ws_status::PARSE_ACCOUNT_API_RES_TEXT)
-                            }
-                        },
-                        Err(_) => return Err(ws_status::UNAUTHORIZED)
-                    }
-                },
-                Err(_) => return Err(ws_status::PARSE_ACCOUNT_API_RES)
-            };
-
-            /*- Get player -*/
-            let fetched_player = &Player::fetch_player(&suid);
-            let current_player:Player = match serde_json::from_str::<Player>(match fetched_player {
-                Some(string) => string,
-                None => return Err(ws_status::PLAYER_PARSE)
-            }) {
-                Ok(e) => e,
-                Err(_) => return Err(ws_status::PLAYER_PARSE)
+            /*- Authorize player -*/
+            let current_player = match req_utils::authorize_player(&request.jwt) {
+                Ok(player) => player,
+                Err(status) => return Err(status)
             };
 
             /*- Get room -*/
@@ -209,6 +173,7 @@ fn join_room(
                 };
 
                 /*- Return -*/
+                println!("JOIN: {room:?}");
                 Ok(json!({
                     "status": 200,
                     "room": room.to_string()

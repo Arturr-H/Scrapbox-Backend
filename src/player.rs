@@ -9,16 +9,16 @@ use std::default::Default;
 use crate::ACCOUNT_MANAGER_URL;
 
 /*- Structs, enums & unions -*/
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct Player<'lf> {
-    pub suid: Option<&'lf str>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Player {
+    pub suid: String,
 
     // Lowercase name, can be occupied by others
-    pub username: Option<&'lf str>,
+    pub username: String,
 
     // Name with special characters etc.
     // Displayed in normal circumstances
-    pub displayname: Option<&'lf str>,
+    pub displayname: String,
 
     // The player's statistics
     pub statistics : GameStatistics
@@ -33,18 +33,13 @@ pub struct GameStatistics {
 }
 
 /*- Method implementations -*/
-impl<'lf> Player<'lf> {
+impl Player {
     pub fn new() -> Self {
         Self { ..Self::default() }
     }
 
-    /*- Builder pattern -*/
-    pub fn username(mut self, username:&'lf str) ->       Self { self.username = Some(username); self }
-    pub fn displayname(mut self, displayname:&'lf str) -> Self { self.displayname = Some(displayname); self }
-    pub fn suid(mut self, suid:&'lf str) ->               Self { self.suid = Some(suid); self }
-
     /*- Bincode deserialization for transport in websocket tunnels -*/
-    pub fn from_bytes(input: &'lf [u8]) -> Result<Self, Box<bincode::ErrorKind>> {
+    pub fn from_bytes<'lf>(input: &'lf [u8]) -> Result<Self, Box<bincode::ErrorKind>> {
         /*- Deserialize & if fail return -*/
         let player:Player = bincode::deserialize(input)?;
 
@@ -80,11 +75,6 @@ impl<'lf> Player<'lf> {
 
     /*- Fetch player data by SUID -*/
     pub fn fetch_player(suid:&str) -> Option<String> {
-        println!("{}",             format!(
-            "{}profile/data/by_suid/{}",
-            *ACCOUNT_MANAGER_URL,
-            suid
-        ));
         /*- Get JSON data -*/
         let json_fetch:String = reqwest::blocking::get(
             format!(
@@ -100,9 +90,9 @@ impl<'lf> Player<'lf> {
 }
 
 /*- Default settings -*/
-impl<'f> Default for Player<'f> {
+impl Default for Player {
     fn default() -> Self {
-        Self { suid: None, username: None, displayname: None, statistics: GameStatistics::default() }
+        Self { suid: String::new(), username: String::new(), displayname: String::new(), statistics: GameStatistics::default() }
     }
 }
 impl Default for GameStatistics {
@@ -112,7 +102,7 @@ impl Default for GameStatistics {
 }
 
 /*- PartialEq for checking if player is in room or not -*/
-impl<'a> PartialEq for Player<'a> {
+impl PartialEq for Player {
     fn eq(&self, other: &Self) -> bool {
         self.suid == other.suid
     }

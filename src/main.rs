@@ -11,6 +11,7 @@ mod player;
 mod room;
 mod handle_req;
 mod ws_status;
+mod req_utils;
 // ---
 use tungstenite;
 use player::Player;
@@ -59,7 +60,8 @@ fn main() {
 		.expect("REDIS AUTH might have failed. Do CONFIG SET requirepass <pass>");
 
 	/*- Pre-warn about scrapbox-account-manager connection -*/
-	reqwest::blocking::get(&**ACCOUNT_MANAGER_URL).unwrap();
+	reqwest::blocking::get(&**ACCOUNT_MANAGER_URL)
+		.expect("Account manager server not up!");
 
 	/*- Print the launch -*/
 	println!("Launch successful on {}:{}!", WSS_ADDRESS, WSS_PORT);

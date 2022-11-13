@@ -16,7 +16,7 @@ mod private_room_id_range {
 
 /*- Structs, enums & unions -*/
 #[derive(Serialize, Debug)]
-pub struct Room<'lf> {
+pub struct Room {
     // Room-id for sending room specific websocket data
     pub private_id      : String,
 
@@ -24,7 +24,7 @@ pub struct Room<'lf> {
     pub public_id       : u32,
 
     // All players in the room, including the leader
-    pub players         : Vec<Player<'lf>>,
+    pub players         : Vec<Player>,
 
     // Player bytes
     pub _players        : Vec<u8>,
@@ -35,7 +35,7 @@ pub struct Room<'lf> {
     // The creator of the room usually gets this role,
     // however they might leave which will pass this role
     // onto the next player who joined.
-    pub leader      : Player<'lf>,
+    pub leader      : Player,
 
     // Wether the room has started yet or not
     pub started     : bool,
@@ -46,16 +46,16 @@ pub struct Room<'lf> {
 }
 
 /*- Method implementations -*/
-impl<'a> Room<'a> {
+impl Room {
 
     /*- Create a room with leader as input -*/
-    pub fn from_leader(leader:Player<'a>, private_id:String, public_id:u32) -> Self {
+    pub fn from_leader(leader:Player, private_id:String, public_id:u32) -> Self {
 
         /*- Return -*/
         Self {
             private_id,
             public_id,
-            players: vec![leader],
+            players: vec![leader.clone()],
             _players: Vec::new(),
             max_players: 5,
             leader,
@@ -65,14 +65,14 @@ impl<'a> Room<'a> {
     }
 
     /*- Remove player from room -*/
-    pub fn remove_player(&mut self, player:Player<'a>) -> Result<(), ()> {
+    pub fn remove_player(&mut self, player:Player) -> Result<(), ()> {
         /*- First check if player is leader -*/
         if player.suid == self.leader.suid {
             self.players.remove(0);
 
             /*- Get next player as leader -*/
             self.leader = match self.players.iter().next() {
-                Some(player) => *player,
+                Some(player) => player.clone(),
                 None => return Err(self.disbandon())
             };
 
@@ -91,7 +91,7 @@ impl<'a> Room<'a> {
     }
 
     /*- Add player to room -*/
-    pub fn add_player(&mut self, player:Player<'a>) -> Result<(), ()> {
+    pub fn add_player(&mut self, player:Player) -> Result<(), ()> {
         /*- If room still fits another player -*/
         if self.players.len() < self.max_players as usize {
             self.players.push(player);
@@ -148,7 +148,7 @@ impl<'a> Room<'a> {
             None => return None
         }
     }
-    pub fn from_redis_hash<'w: 'a>(hash:&'w BTreeMap<String, String>) -> Option<Self> {
+    pub fn from_redis_hash<'w>(hash:&'w BTreeMap<String, String>) -> Option<Self> {
         let players = match bincode::deserialize::<Vec<Player>>(
             match &hash.get("players") {
                 Some(e) => e,
@@ -194,7 +194,7 @@ impl<'a> Room<'a> {
         todo!()
     }
 }
-impl<'lf> Default for Room<'lf> {
+impl Default for Room {
     fn default() -> Self {
         Self { 
             private_id: String::new(), 
@@ -208,7 +208,7 @@ impl<'lf> Default for Room<'lf> {
         }
     }
 }
-impl ToString for Room<'_> {
+impl ToString for Room {
     fn to_string(&self) -> String {
         serde_json::to_string(self).unwrap_or(String::new())
     }
