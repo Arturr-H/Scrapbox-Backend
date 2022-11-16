@@ -1,13 +1,24 @@
 
 /*- Imports -*/
-use std::{net::TcpStream, collections::BTreeMap};
+use std::{net::{TcpStream, SocketAddr}, collections::{BTreeMap, HashMap}, sync::Mutex};
 use redis::{ Connection, Commands };
 use serde::{ Deserialize, Serialize };
-use serde_json::{json, Value};
+use serde_json::{ json, Value };
 use serde_derive::{ Serialize, Deserialize };
+use futures_channel::mpsc::{ unbounded, UnboundedSender };
+use futures_util::{ future, pin_mut, stream::TryStreamExt, StreamExt };
 use reqwest;
 use tungstenite::{ WebSocket, Message };
-use crate::{ ACCOUNT_MANAGER_URL, room::Room, player::Player, ws_status, req_utils };
+use crate::{
+    ACCOUNT_MANAGER_URL,
+    REDIS_HOSTNAME,
+    REDIS_PASSWORD,
+    room::Room,
+    player::Player,
+    ws_status,
+    req_utils,
+    PeerMap
+};
 
 /*- Structs & enums -*/
 #[derive(Serialize, Deserialize, Debug)]
@@ -32,53 +43,88 @@ struct JoinRoomRequestData {
 }
 
 /*- Main -*/
-pub fn handle_req<'a>(
-    text:&String,
-    websocket:&mut WebSocket<TcpStream>,
-    redis_connection: &mut Connection
-) -> () {
+pub async fn handle_req<'a>(
+    msg:tungstenite::Message,
+    peer_map: &PeerMap,
+    current_connection: SocketAddr
+) -> Result<(), tungstenite::Error> {
+    println!("h");
+    /*- Get peers -*/
+    let peers = match peer_map.lock() {
+        Ok(e) => e,
+        Err(_) => return Err(tungstenite::Error::ConnectionClosed)
+    };
+
+    /*- Connect non-asynchronously (won't be needed, we use threads instead) -*/
+    let mut redis_connection:Connection = redis::Client::open(format!("redis://:{}@{}", *REDIS_PASSWORD, *REDIS_HOSTNAME))
+        .unwrap()
+        .get_connection()
+        .unwrap();
+
+    /*- Which client we want to broadcast to -*/
+    let broadcast_recipients = peers
+        .iter()
+        // .filter(|(peer_addr, _)| peer_addr != &&addr)
+        .map(|(_, ws_sink)| ws_sink);
+
+    /*- Send to all selected client -*/
+    for recp in broadcast_recipients {
+        match recp.unbounded_send(msg.clone()) {
+            Ok(e) => e,
+            Err(_) => return Ok(())
+        };
+    }
 
     /*- Get what type of JSON struct to use -*/
-    let mut request:RequestJsonType = match serde_json::from_str::<GeneralRequest>(text) {
-        Ok(GeneralRequest { destination, data }) => {
-            /*- Get what type of json data is to be serialized -*/
-            match destination {
-                "create-room"   => RequestJsonType::CreateRoom(
-                    match serde_json::from_str::<CreateRoomRequestData>(&data) { Ok(e) => e, Err(_) => return }
-                ),
-                "join-room"     => RequestJsonType::JoinRoom(
-                    match serde_json::from_str::<JoinRoomRequestData>(&data) { Ok(e) => e, Err(_) => return }
-                ),
-                _ => return
-            }
-        },
-        Err(_) => return
-    };
+    if let Message::Text(text) = msg {
+        let mut request:RequestJsonType = match serde_json::from_str::<GeneralRequest>(&text) {
+            Ok(GeneralRequest { destination, data }) => {
+                println!("{destination} {data}");
+                /*- Get what type of json data is to be serialized -*/
+                match destination {
+                    "create-room"   => RequestJsonType::CreateRoom(
+                        match serde_json::from_str::<CreateRoomRequestData>(&data) { Ok(e) => e, Err(_) => return Err(tungstenite::Error::ConnectionClosed) }
+                    ),
+                    "join-room"     => RequestJsonType::JoinRoom(
+                        match serde_json::from_str::<JoinRoomRequestData>(&data) { Ok(e) => e, Err(_) => return Err(tungstenite::Error::ConnectionClosed) }
+                    ),
+                    _ => return Err(tungstenite::Error::ConnectionClosed)
+                }
+            },
+            Err(_) => return Err(tungstenite::Error::ConnectionClosed)
+        };
+        
+        let websocket = peers.get(&current_connection).unwrap();
 
-    /*- Check what request type -*/
-    match match request {
-        RequestJsonType::CreateRoom(data) => create_room(&data, websocket, redis_connection),
-        RequestJsonType::JoinRoom(data) => join_room(&data, websocket, redis_connection),
-    } {
+        /*- Check what request type -*/
+        match match match request {
+            RequestJsonType::CreateRoom(data) => create_room(&data, &mut redis_connection).await,
+            RequestJsonType::JoinRoom(data) => join_room(&data, &mut redis_connection).await,
+        } {
 
-        /*- Write status to websocket tunnel -*/
-        Ok(json)    => websocket.write_message(Message::Text(json.to_string())).ok(),
-        Err(status) => websocket.write_message(Message::Text(
-            json!({
-                "status": status
-            }).to_string()
-        )).ok()
-    };
+            /*- Write status to websocket tunnel -*/
+            Ok(json)    => websocket.unbounded_send(Message::Text(json.to_string())).ok(),
+            Err(status) => websocket.unbounded_send(Message::Text(
+                json!({
+                    "status": status
+                }).to_string()
+            )).ok()
+        } {
+            Some(e) => Ok(e),
+            None => Err(tungstenite::Error::ConnectionClosed)
+        }
+    }else {
+        Err(tungstenite::Error::ConnectionClosed)
+    }
 }
 
 /*- Functions -*/
-fn create_room(
+async fn create_room(
     request:&CreateRoomRequestData,
-    websocket:&mut WebSocket<TcpStream>,
     redis_connection: &mut Connection
 ) -> Result<Value, u16> {
     /*- GET JWT auth status -*/
-    let status:u16 = Player::check_auth(&request.jwt);
+    let status:u16 = Player::check_auth(&request.jwt).await;
 
     /*- Check status -*/
     match status {
@@ -116,13 +162,12 @@ fn create_room(
     }
 }
 
-fn join_room(
+async fn join_room(
     request:&JoinRoomRequestData,
-    websocket:&mut WebSocket<TcpStream>,
     redis_connection: &mut Connection
 ) -> Result<Value, u16> {
     /*- GET JWT auth status -*/
-    let status:u16 = Player::check_auth(&request.jwt);
+    let status:u16 = Player::check_auth(&request.jwt).await;
 
     /*- Check status -*/
     match status {
@@ -132,7 +177,7 @@ fn join_room(
         // Ok
         200 => {
             /*- Authorize player -*/
-            let current_player = match req_utils::authorize_player(&request.jwt) {
+            let current_player = match req_utils::authorize_player(&request.jwt).await {
                 Ok(player) => player,
                 Err(status) => return Err(status)
             };

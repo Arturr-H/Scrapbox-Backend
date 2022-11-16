@@ -13,18 +13,24 @@ mod handle_req;
 mod ws_status;
 mod req_utils;
 // ---
-use tungstenite;
+use tokio_tungstenite;
+use tungstenite::protocol::Message;
+use tokio::net::{ self, TcpListener, TcpStream };
 use player::Player;
 use room::Room;
 use lazy_static::lazy_static;
-use redis::{ self, Commands, Connection };
+use redis::{ self, AsyncCommands, Commands, Connection };
 use dotenv::dotenv;
 use handle_req::handle_req;
 use responder::prelude::*;
+use futures_channel::mpsc::{ unbounded, UnboundedSender };
+use futures_util::{ future, pin_mut, stream::TryStreamExt, StreamExt };
 use std::{
 	env,
 	thread,
-	net::TcpListener
+	sync::{ Mutex, Arc },
+	collections::HashMap,
+	net::SocketAddr,
 };
 
 /*- Constants -*/
@@ -32,6 +38,10 @@ const WSS_ADDRESS :&str = "127.0.0.1";
 const WSS_PORT    :u16  = 8080;
 const R_ENV_KEY_HOSTNAME: &'static str = "REDIS_HOSTNAME";
 const R_ENV_KEY_PASSWORD: &'static str = "REDIS_PASSWORD";
+
+/*- Types -*/
+type Tx = UnboundedSender<Message>;
+pub type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
 /*- Lazy statics -*/
 lazy_static! {
@@ -43,12 +53,10 @@ lazy_static! {
 }
 
 /*- Initialize -*/
-fn main() {
+#[tokio::main]
+async fn main() {
 	/*- Initialize .env k&v:s -*/
 	dotenv().unwrap();
-	
-	/*- Start websocket server listener -*/
-	let server = TcpListener::bind(format!("{}:{}", WSS_ADDRESS, WSS_PORT)).unwrap();
 
 	/*- Pre-warn about missing ENV variables, bevcause lazy static won't initialize them until read -*/
 	env::var(R_ENV_KEY_HOSTNAME).unwrap();
@@ -56,55 +64,64 @@ fn main() {
 
 	/*- Pre-warn about redis connection -*/
 	redis::Client::open(format!("redis://:{}@{}", *REDIS_PASSWORD, *REDIS_HOSTNAME)).unwrap()
-		.get_connection()
+		.get_async_connection().await
 		.expect("REDIS AUTH might have failed. Do CONFIG SET requirepass <pass>");
 
 	/*- Pre-warn about scrapbox-account-manager connection -*/
-	reqwest::blocking::get(&**ACCOUNT_MANAGER_URL)
+	reqwest::get(&**ACCOUNT_MANAGER_URL).await
 		.expect("Account manager server not up!");
+
+	/*- Start websocket server listener -*/
+	let server = TcpListener::bind(format!("{}:{}", WSS_ADDRESS, WSS_PORT)).await.unwrap();
 
 	/*- Print the launch -*/
 	println!("Launch successful on {}:{}!", WSS_ADDRESS, WSS_PORT);
 
+	/*- Create websocket client hashmap -*/
+	let peers:PeerMap = Arc::new(Mutex::new(HashMap::new()));
+
     /*- Get every request isn't Err(_) -*/
-	for request in server.incoming() {
-		let request = match request {
-			Ok(req) => req,
-			Err(_) => continue,
-		};
-		
-		/*- Spawn a new thread for each connection -*/
-		thread::spawn(move || {
-
-			/*- Try accept websocket tunnel connection -*/
-			let mut websocket = match tungstenite::accept(request) {
-				Ok(msg) => msg,
-				Err(_) => return
-			};
-
-			/*- Connect non-asynchronously (won't be needed, we use threads instead) -*/
-			let mut connection:Connection = redis::Client::open(format!("redis://:{}@{}", *REDIS_PASSWORD, *REDIS_HOSTNAME))
-				.unwrap()
-				.get_connection()
-				.unwrap();
-
-			/*- Client tunnel handled here -*/
-			loop {
-				/*- Get client message -*/
-				let mut message:tungstenite::Message;
-				match websocket.read_message() {
-					Ok(msg) => {
-						message = msg;
-					},
-					Err(_) => continue
-				};
-
-				/*- Match message type (we only accept binary) -*/
-				match message {
-					tungstenite::Message::Text(text) => handle_req(&text, &mut websocket, &mut connection),
-					_ => ()
-				};
-			};
-		});
-	}
+	while let Ok((stream, addr)) = server.accept().await {
+		handle_ws_connection(peers.clone(), stream, addr).await;
+	};
 }
+
+async fn handle_ws_connection(peer_map: PeerMap, raw_tcp_stream: TcpStream, addr: SocketAddr) -> () {
+	/*- Try accept websocket tunnel connection -*/
+	let stream = match tokio_tungstenite::accept_async(raw_tcp_stream).await {
+		Ok(e) => e,
+		Err(_) => return
+	};
+
+	/*- Push client -*/
+    let (tx, rx) = unbounded();
+    peer_map.lock().unwrap().insert(addr, tx);
+	let (outgoing, incoming) = stream.split();
+
+	/*- Get incoming requests -*/
+    let broadcast_incoming = incoming.try_for_each(|message| handle_req(message, &peer_map, addr));
+
+    let receive_from_others = rx.map(Ok).forward(outgoing);
+
+    pin_mut!(broadcast_incoming, receive_from_others);
+    future::select(broadcast_incoming, receive_from_others).await;
+
+    println!("{} disconnected", &addr);
+
+	/*- Remove connection from peer map -*/
+    peer_map.lock().unwrap().remove(&addr);
+
+
+	// /*- Client tunnel handled here -*/
+	// loop {
+	// 	/*- Get client message -*/
+	// 	let mut message:tungstenite::Message;
+	// 	match peers.lock().unwrap()[&peer_addr].read_message() {
+	// 		Ok(msg) => {
+	// 			message = msg;
+	// 		},
+	// 		Err(_) => continue
+	// 	};
+	// };
+}
+

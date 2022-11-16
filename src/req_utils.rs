@@ -13,17 +13,17 @@ struct SuidResponse {
 }
 
 /*- Functions -*/
-pub fn authorize_player<'a>(jwt:&'a str) -> Result<Player, u16> {
+pub async fn authorize_player<'a>(jwt:&'a str) -> Result<Player, u16> {
     let token_check_url = format!("{}profile/verify-token", &*ACCOUNT_MANAGER_URL);
 
     /*- Check player auth -*/
-    let suid:String = match reqwest::blocking::Client::new()
+    let suid:String = match reqwest::Client::new()
         .get(token_check_url)
-        .header("token", jwt).send() {
+        .header("token", jwt).send().await {
 
         /*- If request succeeded -*/
         Ok(response) => {
-            match response.text() {
+            match response.text().await {
                 Ok(text) => {
                     /*- Parse response to SUID value -*/
                     match serde_json::from_str::<SuidResponse>(&text) {
@@ -38,7 +38,7 @@ pub fn authorize_player<'a>(jwt:&'a str) -> Result<Player, u16> {
     };
 
     /*- Get player -*/
-    let fetched_player = Player::fetch_player(&suid);
+    let fetched_player = Player::fetch_player(&suid).await;
     match fetched_player {
         Some(string) => {
             Ok(match serde_json::from_str::<Player>(string.as_str()) {

@@ -61,28 +61,28 @@ impl Player {
     }
 
     /*- Check user auth status -*/
-    pub fn check_auth(jwt:&str) -> u16 {
+    pub async fn check_auth(jwt:&str) -> u16 {
             /*- GET JWT auth status -*/
         let url = format!("{}{}", &**ACCOUNT_MANAGER_URL, "profile/verify-token");
-        match reqwest::blocking::Client::new()
+        match reqwest::Client::new()
             .get(&url)
             .header("token", jwt)
-            .send()
+            .send().await
             { Ok(e) => e, Err(_) => return 402u16 }
             .status()
             .as_u16()
     }
 
     /*- Fetch player data by SUID -*/
-    pub fn fetch_player(suid:&str) -> Option<String> {
+    pub async fn fetch_player(suid:&str) -> Option<String> {
         /*- Get JSON data -*/
-        let json_fetch:String = reqwest::blocking::get(
+        let json_fetch:String = reqwest::get(
             format!(
                 "{}profile/data/by_suid/{}",
                 *ACCOUNT_MANAGER_URL,
                 suid
             )
-        ).ok()?.text().ok()?;
+        ).await.ok()?.text().await.ok()?;
 
         /*- Return -*/
         Some(json_fetch)
