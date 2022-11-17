@@ -1,7 +1,7 @@
 /*- Global allowings -*/
 
 /*- Imports -*/
-use crate::{ player::Player, ws_status, ACCOUNT_MANAGER_URL };
+use crate::{ player::Player as PlayerInner, wrapper::PlayerRedisWrapper as PlayerWrpd, ws_status, ACCOUNT_MANAGER_URL };
 use serde_derive::{ Serialize, Deserialize };
 use reqwest;
 
@@ -13,7 +13,7 @@ struct SuidResponse {
 }
 
 /*- Functions -*/
-pub async fn authorize_player<'a>(jwt:&'a str) -> Result<Player, u16> {
+pub async fn authorize_player<'a>(jwt:&'a str) -> Result<PlayerWrpd, u16> {
     let token_check_url = format!("{}profile/verify-token", &*ACCOUNT_MANAGER_URL);
 
     /*- Check player auth -*/
@@ -38,11 +38,13 @@ pub async fn authorize_player<'a>(jwt:&'a str) -> Result<Player, u16> {
     };
 
     /*- Get player -*/
-    let fetched_player = Player::fetch_player(&suid).await;
+    let fetched_player = PlayerWrpd::fetch_player(&suid).await;
     match fetched_player {
         Some(string) => {
-            Ok(match serde_json::from_str::<Player>(string.as_str()) {
-                Ok(e) => e,
+
+            /*- Deserialize the player data and wrap it in a wrapper -*/
+            Ok(match serde_json::from_str::<PlayerInner>(string.as_str()) {
+                Ok(e) => PlayerWrpd::from_inner(e),
                 Err(e) => panic!("{e}")
             })
         },

@@ -1,5 +1,5 @@
 /*- Imports -*/
-use crate::player::Player;
+use crate::{ player::Player as PlayerInner, wrapper::PlayerRedisWrapper as PlayerWrpd };
 use rand::Rng;
 use serde_derive::{ Serialize, Deserialize };
 use uuid::Uuid;
@@ -24,7 +24,7 @@ pub struct Room {
     pub public_id       : u32,
 
     // All players in the room, including the leader
-    pub players         : Vec<Player>,
+    pub players         : Vec<PlayerWrpd>,
 
     // Player bytes
     pub _players        : Vec<u8>,
@@ -35,7 +35,7 @@ pub struct Room {
     // The creator of the room usually gets this role,
     // however they might leave which will pass this role
     // onto the next player who joined.
-    pub leader      : Player,
+    pub leader      : PlayerWrpd,
 
     // Wether the room has started yet or not
     pub started     : bool,
@@ -49,7 +49,7 @@ pub struct Room {
 impl Room {
 
     /*- Create a room with leader as input -*/
-    pub fn from_leader(leader:Player, private_id:String, public_id:u32) -> Self {
+    pub fn from_leader(leader:PlayerWrpd, private_id:String, public_id:u32) -> Self {
 
         /*- Return -*/
         Self {
@@ -65,9 +65,9 @@ impl Room {
     }
 
     /*- Remove player from room -*/
-    pub fn remove_player(&mut self, player:Player) -> Result<(), ()> {
+    pub fn remove_player(&mut self, player:PlayerWrpd) -> Result<(), ()> {
         /*- First check if player is leader -*/
-        if player.suid == self.leader.suid {
+        if player.player.suid == self.leader.player.suid {
             self.players.remove(0);
 
             /*- Get next player as leader -*/
@@ -80,7 +80,7 @@ impl Room {
         }else {
             /*- Iterate over players -*/
             for (index, p) in self.players.iter().enumerate() {
-                if p.suid == player.suid {
+                if p.player.suid == player.player.suid {
                     self.players.remove(index);
                     return Ok(())
                 };
@@ -91,7 +91,7 @@ impl Room {
     }
 
     /*- Add player to room -*/
-    pub fn add_player(&mut self, player:Player) -> Result<(), ()> {
+    pub fn add_player(&mut self, player:PlayerWrpd) -> Result<(), ()> {
         /*- If room still fits another player -*/
         if self.players.len() < self.max_players as usize {
             self.players.push(player);
@@ -149,7 +149,7 @@ impl Room {
         }
     }
     pub fn from_redis_hash<'w>(hash:&'w BTreeMap<String, String>) -> Option<Self> {
-        let players = match bincode::deserialize::<Vec<Player>>(
+        let players = match bincode::deserialize::<Vec<PlayerWrpd>>(
             match &hash.get("players") {
                 Some(e) => e,
                 None => return None
@@ -166,7 +166,7 @@ impl Room {
             players,
             _players: Vec::new(),
             max_players: hash.get("max-players")?.to_string().parse::<u8>().ok()?,
-            leader: Player::from_bytes(&hash.get("leader")?.as_bytes()).ok()?,
+            leader: PlayerWrpd::from_bytes(&hash.get("leader")?.as_bytes()).ok()?,
             started: Self::make_bool(hash.get("started"))?,
             private: Self::make_bool(hash.get("private"))?
         })
@@ -202,7 +202,7 @@ impl Default for Room {
             players: Vec::new(), 
             _players: Vec::new(), 
             max_players: 5, 
-            leader: Player::default(), 
+            leader: PlayerWrpd::default(), 
             started: false, 
             private: false
         }

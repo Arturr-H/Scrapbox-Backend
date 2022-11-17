@@ -6,34 +6,31 @@
 /*- Imports -*/
 use serde_derive::{ Serialize, Deserialize };
 use std::default::Default;
-use crate::ACCOUNT_MANAGER_URL;
+use crate::{ ACCOUNT_MANAGER_URL, Player };
 
-/*- Structs, enums & unions -*/
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Player {
-    pub suid: String,
+/*- Player which will be stored in the redis backend, will
+    contain the player itself (Player struct) and the
+    LocalGameData struct for saving things like snippets -*/
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PlayerRedisWrapper {
+    // Inner values
+    pub player: Player,
 
-    // Lowercase name, can be occupied by others
-    pub username: String,
-
-    // Name with special characters etc.
-    // Displayed in normal circumstances
-    pub displayname: String,
-
-    // The player's statistics
-    pub statistics : GameStatistics
+    // Data stored temporary for each game
+    pub local_data: LocalGameData,
 }
 
-/*- Game statistics -*/
+/*- Game data, only lives for the lifetime of a game -*/
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct GameStatistics {
-    pub games_won    : u32,
-    pub games_played : u32,
-    pub words_written: u32
+pub struct LocalGameData {
+    // The game start screen will have a whiteboard with all frames
+    // containing the player sprites, this coordinate will be where
+    // on the board this player lies
+    pub board_position    : [u8; 2],
 }
 
 /*- Method implementations -*/
-impl Player {
+impl PlayerRedisWrapper {
     pub fn new() -> Self {
         Self { ..Self::default() }
     }
@@ -41,7 +38,7 @@ impl Player {
     /*- Bincode deserialization for transport in websocket tunnels -*/
     pub fn from_bytes<'lf>(input: &'lf [u8]) -> Result<Self, Box<bincode::ErrorKind>> {
         /*- Deserialize & if fail return -*/
-        let player:Player = bincode::deserialize(input)?;
+        let player:PlayerRedisWrapper = bincode::deserialize(input)?;
 
         /*- return -*/
         Ok(player)
@@ -87,27 +84,34 @@ impl Player {
         /*- Return -*/
         Some(json_fetch)
     }
+
+    /*- Create player wrapper using inner values -*/
+    pub fn from_inner(player:Player) -> Self {
+        Self { player, ..Default::default() }
+    }
 }
 
 /*- Default settings -*/
-impl Default for Player {
+impl Default for PlayerRedisWrapper {
     fn default() -> Self {
-        Self { suid: String::new(), username: String::new(), displayname: String::new(), statistics: GameStatistics::default() }
+        Self { player: Player::default(), local_data: LocalGameData::default() }
     }
 }
-impl Default for GameStatistics {
+impl Default for LocalGameData {
     fn default() -> Self {
-        GameStatistics { games_won: 0, games_played: 0, words_written: 0 }
+        Self {
+            board_position: [0, 0]
+        }
     }
 }
 
 /*- PartialEq for checking if player is in room or not -*/
-impl PartialEq for Player {
+impl PartialEq for PlayerRedisWrapper {
     fn eq(&self, other: &Self) -> bool {
-        self.suid == other.suid
+        self.player.suid == other.player.suid
     }
     fn ne(&self, other: &Self) -> bool {
-        self.suid != other.suid
+        self.player.suid != other.player.suid
     }
 }
 

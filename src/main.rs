@@ -7,7 +7,14 @@
 )]
 
 /*- Imports & Modules -*/
+// Player modules
+#[path ="./player/player.rs"]
 mod player;
+
+#[path ="./player/wrapper.rs"]
+mod wrapper;
+
+
 mod room;
 mod handle_req;
 mod ws_status;

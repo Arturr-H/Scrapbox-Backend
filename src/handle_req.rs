@@ -1,6 +1,10 @@
 
 /*- Imports -*/
-use std::{net::{TcpStream, SocketAddr}, collections::{BTreeMap, HashMap}, sync::Mutex};
+use std::{
+    net::{ TcpStream, SocketAddr },
+    collections::{ BTreeMap, HashMap },
+    sync::Mutex
+};
 use redis::{ Connection, Commands };
 use serde::{ Deserialize, Serialize };
 use serde_json::{ json, Value };
@@ -14,7 +18,8 @@ use crate::{
     REDIS_HOSTNAME,
     REDIS_PASSWORD,
     room::Room,
-    player::Player,
+    player::Player as PlayerInner,
+    wrapper::PlayerRedisWrapper as Player,
     ws_status,
     req_utils,
     PeerMap
@@ -39,7 +44,7 @@ struct CreateRoomRequestData {
 #[derive(Serialize, Deserialize, Debug)]
 struct JoinRoomRequestData {
     jwt: String,
-    room_id: String
+    room_id: u32
 }
 
 /*- Main -*/
@@ -81,6 +86,7 @@ pub async fn handle_req<'a>(
             Ok(GeneralRequest { destination, data }) => {
                 println!("{destination} {data}");
                 /*- Get what type of json data is to be serialized -*/
+                println!("{:?}", serde_json::from_str::<JoinRoomRequestData>(&data));
                 match destination {
                     "create-room"   => RequestJsonType::CreateRoom(
                         match serde_json::from_str::<CreateRoomRequestData>(&data) { Ok(e) => e, Err(_) => return Err(tungstenite::Error::ConnectionClosed) }
@@ -168,7 +174,6 @@ async fn join_room(
 ) -> Result<Value, u16> {
     /*- GET JWT auth status -*/
     let status:u16 = Player::check_auth(&request.jwt).await;
-
     /*- Check status -*/
     match status {
         // Unauthorized
@@ -176,6 +181,7 @@ async fn join_room(
 
         // Ok
         200 => {
+            
             /*- Authorize player -*/
             let current_player = match req_utils::authorize_player(&request.jwt).await {
                 Ok(player) => player,
