@@ -38,11 +38,13 @@ pub async fn authorize_player<'a>(jwt:&'a str) -> Result<PlayerWrpd, u16> {
     };
 
     /*- Get player -*/
+    println!("SUID: {suid}");
     let fetched_player = PlayerWrpd::fetch_player(&suid).await;
     match fetched_player {
         Some(string) => {
 
             /*- Deserialize the player data and wrap it in a wrapper -*/
+            println!("TOOO {}", string.as_str());
             Ok(match serde_json::from_str::<PlayerInner>(string.as_str()) {
                 Ok(e) => PlayerWrpd::from_inner(e),
                 Err(e) => panic!("{e}")

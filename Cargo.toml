@@ -5,8 +5,7 @@ edition = "2021"
 
 [dependencies]
 ## Main backend handler
-tokio-tungstenite = "0.17.2"
-tungstenite = "0.17.3"
+warp = "1.0"
 
 ## For async main & more async / await functionality
 tokio = { version = "1.0.0", features = ["macros", "rt-multi-thread"] }
@@ -23,7 +22,7 @@ bincode = "1.3.3"
 lazy_static = "1.4.0"
 
 ## Database for storing rooms
-redis = { version = "0.22.1", features = ["tokio-comp"] }
+mongodb = { version = "2.3.1", default-features = false, features = ["async-std-runtime"] }
 
 ## For checking JWS auth
 reqwest = "0.11.0"

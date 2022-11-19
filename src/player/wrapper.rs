@@ -5,7 +5,7 @@
 
 /*- Imports -*/
 use serde_derive::{ Serialize, Deserialize };
-use std::default::Default;
+use std::{default::Default, net::{SocketAddr, Ipv4Addr}};
 use crate::{ ACCOUNT_MANAGER_URL, Player };
 
 /*- Player which will be stored in the redis backend, will
@@ -18,6 +18,10 @@ pub struct PlayerRedisWrapper {
 
     // Data stored temporary for each game
     pub local_data: LocalGameData,
+
+    // Socket address which is stored in peer map, used to find and remove player
+    // from peer map when they disconnect.
+    pub socket_addr: String,
 }
 
 /*- Game data, only lives for the lifetime of a game -*/
@@ -94,7 +98,11 @@ impl PlayerRedisWrapper {
 /*- Default settings -*/
 impl Default for PlayerRedisWrapper {
     fn default() -> Self {
-        Self { player: Player::default(), local_data: LocalGameData::default() }
+        Self {
+            player: Player::default(),
+            local_data: LocalGameData::default(),
+            socket_addr: String::default()
+        }
     }
 }
 impl Default for LocalGameData {

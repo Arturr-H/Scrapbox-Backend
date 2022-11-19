@@ -1,14 +1,28 @@
 version: '3'
 
-services:
-  redis:
-    image: redis:7.0.5
-    ports:
-      - "6379:6379"
-    volumes:
-      - ./redis-data:/data
-    command: redis-server --appendonly yes
+volumes:
+  mongodata:
 
+services:
+  mongodb_room_manager:
+    image: mongo:4
+    container_name: mongodb_room_manager
+    environment:
+      - AUTH=yes
+      - MONGODB_ADMIN_USER=artur
+      - MONGODB_ADMIN_PASS=password
+      - MONGODB_APPLICATION_DATABASE=sample
+      - MONGODB_APPLICATION_USER=aashrey
+      - MONGODB_APPLICATION_PASS=admin123
+
+    command: mongod --port 27018
+    ports:
+      - "27018:27018"
+    volumes:
+      - ./:/usr/src/app
+      - mongodata:/data/db
+    restart: always
+    
   rust:
     image: rust:1.65.0
     ports:
